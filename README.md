@@ -17,4 +17,3 @@ Ten instalator jest wariacją [linexin-installer](https://github.com/Petexy/line
 
 # UWAGA
 Nie wybieraj hyprlanda na tą chwilę. Ta opcja jest we wczesnej becie i nie działa poprawnie
-# ArcOS-Installer
