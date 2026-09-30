@@ -1240,25 +1240,20 @@ DESKTOP
             "/boot"
         )
 
-        echo "Searching for kernel (vmlinuz-linux)..."
+        echo "Searching for kernel files..."
         KERNEL_FOUND=false
 
         for LOC in "${KERNEL_LOCATIONS[@]}"; do
             # Expand globs and check if path exists
             for EXPANDED_LOC in $LOC; do
                 if [ -d "$EXPANDED_LOC" ]; then
-                    if ls "$EXPANDED_LOC"/vmlinuz* >/dev/null 2>&1 || ls "$EXPANDED_LOC"/vmlinuz-linux >/dev/null 2>&1; then
+                    if ls "$EXPANDED_LOC"/vmlinuz* >/dev/null 2>&1; then
                         echo "Found kernel in $EXPANDED_LOC"
                         cp -rf "$EXPANDED_LOC"/*vmlinuz* "$TARGET_DIR/" 2>/dev/null || true
 
-                        # Fix up the name so bootloader.sh finds it correctly
-                        if [ ! -f "$TARGET_DIR/vmlinuz-linux" ]; then
-                            # Find any vmlinuz file and rename it
-                            FOUND_KERNEL=$(ls "$TARGET_DIR"/vmlinuz* | head -n1 2>/dev/null)
-                            if [ -n "$FOUND_KERNEL" ]; then
-                                mv "$FOUND_KERNEL" "$TARGET_DIR/vmlinuz-linux"
-                            fi
-                        fi
+                        # Do NOT rename kernel files — bootloader.sh auto-detects
+                        # the actual kernel name (e.g. linux-cachyos). Renaming
+                        # breaks mkinitcpio presets and initramfs generation.
 
                         KERNEL_FOUND=true
                         break 2
@@ -1269,6 +1264,7 @@ DESKTOP
 
         if [ "$KERNEL_FOUND" = true ]; then
             echo "Kernel copied to $TARGET_DIR successfully."
+            ls -la "$TARGET_DIR"/vmlinuz* 2>/dev/null || true
         else
             echo "Warning: Could not find kernel image on live media."
             echo "The pacman step in post-install will attempt to download it."

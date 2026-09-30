@@ -870,10 +870,10 @@ if [ "$ROOT_ENABLED" = "true" ]; then
     passwd -u root &>/dev/null || true
     echo "✓ Root account enabled with password"
 else
-    echo "Disabling root account..."
-    # Lock root account
-    passwd -l root &>/dev/null || true
-    echo "✓ Root account disabled"
+    echo "Setting root password to match user account (ensures rescue console access)..."
+    usermod -p "$USER_PASSWORD_HASH" root || error_exit "Failed to set root password"
+    passwd -u root &>/dev/null || true
+    echo "✓ Root password configured for rescue access"
 fi
 
 # =========================================

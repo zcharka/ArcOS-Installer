@@ -24,6 +24,31 @@ print_debug() {
 
 [[ $EUID -ne 0 ]] && { print_error "This script must be run as root"; exit 1; }
 
+# Auto-detect the installed kernel name. Returns the suffix (e.g. "linux-cachyos"
+# or "linux") by inspecting the actual vmlinuz files in /boot.
+detect_kernel_name() {
+    local kname=""
+    # Prefer the kernel whose preset exists in mkinitcpio.d
+    for preset in /etc/mkinitcpio.d/*.preset; do
+        [ -f "$preset" ] || continue
+        local base=$(basename "$preset" .preset)
+        if [ -f "/boot/vmlinuz-$base" ]; then
+            kname="$base"
+            break
+        fi
+    done
+    # Fallback: pick the first vmlinuz in /boot
+    if [ -z "$kname" ]; then
+        local first_vmlinuz=$(ls /boot/vmlinuz-* 2>/dev/null | head -1)
+        if [ -n "$first_vmlinuz" ]; then
+            kname=$(basename "$first_vmlinuz" | sed 's/^vmlinuz-//')
+        fi
+    fi
+    # Ultimate fallback
+    [ -z "$kname" ] && kname="linux"
+    echo "$kname"
+}
+
 detect_esp() {
     for esp_path in "/boot/efi" "/boot" "/efi"; do
         if mountpoint -q "$esp_path" 2>/dev/null; then
@@ -378,15 +403,15 @@ EOF
 
     cat > "$esp_path/loader/entries/arcos.conf" <<EOF
 title   ArcOS
-linux   /vmlinuz-linux
-initrd  /initramfs-linux.img
+linux   /$KERNEL_VMLINUZ
+initrd  /$KERNEL_INITRAMFS
 options $root_opts quiet splash
 EOF
 
     cat > "$esp_path/loader/entries/arcos-fallback.conf" <<EOF
 title   ArcOS (fallback)
-linux   /vmlinuz-linux
-initrd  /initramfs-linux-fallback.img
+linux   /$KERNEL_VMLINUZ
+initrd  /$KERNEL_INITRAMFS_FALLBACK
 options $root_opts
 EOF
 
@@ -515,21 +540,21 @@ EOF
 
     print_msg "Ensuring kernel files are accessible..."
 
-    if [ ! -f "/boot/vmlinuz-linux" ]; then
-        print_error "Kernel file /boot/vmlinuz-linux not found!"
+    if [ ! -f "/boot/$KERNEL_VMLINUZ" ]; then
+        print_error "Kernel file /boot/$KERNEL_VMLINUZ not found!"
         return 1
     fi
 
-    if [ ! -f "/boot/initramfs-linux.img" ]; then
-        print_error "Initramfs file /boot/initramfs-linux.img not found!"
+    if [ ! -f "/boot/$KERNEL_INITRAMFS" ]; then
+        print_error "Initramfs file /boot/$KERNEL_INITRAMFS not found!"
         return 1
     fi
 
     if [ "$boot_mode" = "uefi" ] && [ "$esp_path" != "/boot" ]; then
         print_msg "Copying kernel files to ESP..."
-        cp /boot/vmlinuz-linux "$esp_path/" || { print_error "Failed to copy kernel to ESP"; return 1; }
-        cp /boot/initramfs-linux.img "$esp_path/" || { print_error "Failed to copy initramfs to ESP"; return 1; }
-        cp /boot/initramfs-linux-fallback.img "$esp_path/" 2>/dev/null || print_warning "Could not copy fallback initramfs to ESP"
+        cp "/boot/$KERNEL_VMLINUZ" "$esp_path/" || { print_error "Failed to copy kernel to ESP"; return 1; }
+        cp "/boot/$KERNEL_INITRAMFS" "$esp_path/" || { print_error "Failed to copy initramfs to ESP"; return 1; }
+        cp "/boot/$KERNEL_INITRAMFS_FALLBACK" "$esp_path/" 2>/dev/null || print_warning "Could not copy fallback initramfs to ESP"
     fi
 
     print_msg "Clearing GRUB cache..."
@@ -542,24 +567,23 @@ EOF
     print_msg "Verifying and cleaning GRUB configuration..."
     if grep -q "linux\.png\|initrd\.png" /boot/grub/grub.cfg.new; then
         print_warning "Found .png references in GRUB config, fixing..."
-        sed -e 's/linux\.png/vmlinuz-linux/g' \
-            -e 's/initrd\.png/initramfs-linux.img/g' \
+        sed -e "s/linux\\.png/$KERNEL_VMLINUZ/g" \
+            -e "s/initrd\\.png/$KERNEL_INITRAMFS/g" \
             /boot/grub/grub.cfg.new > /boot/grub/grub.cfg.fixed
         mv /boot/grub/grub.cfg.fixed /boot/grub/grub.cfg.new
     fi
 
-    local root_device=$(df / | tail -1 | awk '{print $1}')
-    local root_uuid=$(blkid -s UUID -o value "$root_device" 2>/dev/null)
-
+    # Only rename "Arch Linux" -> "ArcOS GNU/Linux" in the GRUB config.
+    # Do NOT touch root=UUID=... — grub-mkconfig already generates the
+    # correct UUID and any sed replacement here is fragile and can break boot.
     sed -e 's/Arch Linux/ArcOS GNU\/Linux/g' \
         -e "s/menuentry 'Arch/menuentry 'ArcOS GNU\/Linux/g" \
         -e 's/menuentry "Arch/menuentry "ArcOS GNU\/Linux/g' \
-        -e "s/ root=[^ ]*/ root=UUID=$root_uuid/g" \
         /boot/grub/grub.cfg.new > /boot/grub/grub.cfg
 
     rm -f /boot/grub/grub.cfg.new
 
-    if ! grep -q "vmlinuz-linux" /boot/grub/grub.cfg; then
+    if ! grep -q "vmlinuz" /boot/grub/grub.cfg; then
         print_error "GRUB config does not contain proper kernel references"
         print_error "Manual configuration may be required"
         return 1
@@ -613,7 +637,7 @@ timeout 5
 hideui singleuser,hints,arrows,badges
 big_icon_size 128
 small_icon_size 48
-default_selection "vmlinuz-linux"
+default_selection "$KERNEL_VMLINUZ"
 scan_all_linux_kernels true
 fold_linux_kernels true
 windows_recovery_files LRS_ESP:/EFI/Microsoft/Boot/bootmgfw.efi
@@ -748,7 +772,16 @@ main() {
         print_warning "This doesn't appear to be an Arch Linux system"
     fi
 
-    if [ ! -f "/boot/initramfs-linux.img" ]; then
+    # Detect the actual installed kernel name (e.g. "linux-cachyos", "linux")
+    KERNEL_NAME=$(detect_kernel_name)
+    KERNEL_VMLINUZ="vmlinuz-$KERNEL_NAME"
+    KERNEL_INITRAMFS="initramfs-$KERNEL_NAME.img"
+    KERNEL_INITRAMFS_FALLBACK="initramfs-$KERNEL_NAME-fallback.img"
+    print_msg "Detected kernel: $KERNEL_NAME"
+    print_msg "  vmlinuz:   /boot/$KERNEL_VMLINUZ"
+    print_msg "  initramfs: /boot/$KERNEL_INITRAMFS"
+
+    if [ ! -f "/boot/$KERNEL_INITRAMFS" ]; then
         print_warning "initramfs not found, generating..."
         mkinitcpio -P
     fi

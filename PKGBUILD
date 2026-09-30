@@ -2,7 +2,7 @@
 
 pkgname=arcos-installer
 pkgver=1.0
-pkgrel=61
+pkgrel=62
 pkgdesc='ArcOS Operating System Installer'
 url='https://github.com/zcharka'
 arch=('x86_64')
