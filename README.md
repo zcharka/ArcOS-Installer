@@ -7,7 +7,7 @@ This installer is fork for [linexin-installer](https://github.com/Petexy/linexin
 - Modificated installation process
 
 ### WARNING
-Do not choose hyprland at this time. This option is in early beta and not work properly
+Do not choose Other desktop environments other than Plasma at this time. Theese options is not working (kernel panic, no GRUB etc.). I still working on it
 
 ### Dependencies:
 - python-gobject
@@ -23,7 +23,7 @@ Ten instalator jest wariacją [linexin-installer](https://github.com/Petexy/line
 - Zmodyfikowany proces instalacji
 
 ### UWAGA
-Nie wybieraj hyprlanda na tą chwilę. Ta opcja jest we wczesnej becie i nie działa poprawnie
+Nie wybieraj innych środowisk graficznych niż Plasma na tą chwilę. Te opcje nie działają (kernel panic, brak GRUBa i tak dalej). Dalej pracuje nad nimi
 
 ### Zależności:
 - python-gobject
