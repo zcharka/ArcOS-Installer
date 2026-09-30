@@ -113,6 +113,9 @@ rm -rf /etc/mkinitcpio.conf.d 2>/dev/null || true
 # Remove getty service customization
 rm -rf /etc/systemd/system/getty@tty1.service.d 2>/dev/null || true
 
+# Remove live user SDDM autologin configuration
+rm -f /etc/sddm.conf.d/autologin.conf 2>/dev/null || true
+
 # Remove pacman initialization service
 rm -f /etc/systemd/system/multi-user.target.wants/pacman-init.service 2>/dev/null || true
 rm -f /etc/systemd/system/pacman-init.service 2>/dev/null || true
