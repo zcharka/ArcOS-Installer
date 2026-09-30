@@ -153,27 +153,33 @@ echo "Hidden=true" >> /usr/share/applications/org.gnome.Extensions.desktop 2>/de
 # Enable system services
 systemctl enable bluetooth 2>/dev/null || true
 
+# Detect kernel in /boot
+KERNEL_VMLINUZ=$(ls /boot/vmlinuz-* 2>/dev/null | grep -v '\.png$' | head -1)
+if [ -n "$KERNEL_VMLINUZ" ]; then
+    KERNEL_NAME=$(basename "$KERNEL_VMLINUZ" | sed 's/^vmlinuz-//')
+else
+    KERNEL_NAME="linux"
+fi
+
 # Move and configure system files
 mv /etc/skel/.zshrc_postinstall /etc/skel/.zshrc 2>/dev/null || true
-cp /usr/share/refind/icons/os_arcos.png /boot/vmlinuz-linux.png 2>/dev/null || true
+cp /usr/share/refind/icons/os_arcos.png "/boot/vmlinuz-${KERNEL_NAME}.png" 2>/dev/null || true
 mv /etc/os-release /usr/lib/os-release 2>/dev/null || true
 ln -sf /usr/lib/os-release /etc/os-release 2>/dev/null || true
-cat << 'EOF' > /etc/mkinitcpio.d/linux.preset
-# mkinitcpio preset file for the 'linux' package
+
+# Clean up archiso and invalid presets, generate valid preset for current kernel
+rm -f /etc/mkinitcpio.d/*.preset 2>/dev/null || true
+mkdir -p /etc/mkinitcpio.d
+cat << EOF > "/etc/mkinitcpio.d/${KERNEL_NAME}.preset"
+# mkinitcpio preset file for the '${KERNEL_NAME}' package
 
 ALL_config="/etc/mkinitcpio.conf"
-ALL_kver="/boot/vmlinuz-linux"
+ALL_kver="/boot/vmlinuz-${KERNEL_NAME}"
 
 PRESETS=('default' 'fallback')
 
-#default_config="/etc/mkinitcpio.conf"
-default_image="/boot/initramfs-linux.img"
-#default_uki="/efi/EFI/Linux/arch-linux.efi"
-#default_options=""
-
-#fallback_config="/etc/mkinitcpio.conf"
-fallback_image="/boot/initramfs-linux-fallback.img"
-#fallback_uki="/efi/EFI/Linux/arch-linux-fallback.efi"
+default_image="/boot/initramfs-${KERNEL_NAME}.img"
+fallback_image="/boot/initramfs-${KERNEL_NAME}-fallback.img"
 fallback_options="-S autodetect"
 EOF
 mv /usr/share/pixmaps/archlinux-logo-text-dark-postinstall.svg /usr/share/pixmaps/archlinux-logo-text-dark.svg
@@ -376,6 +382,10 @@ fi
 
 # Regenerate initramfs
 mkinitcpio -P
+if [ ! -f "/boot/initramfs-${KERNEL_NAME}.img" ]; then
+    print_warning "mkinitcpio -P did not produce /boot/initramfs-${KERNEL_NAME}.img, attempting direct generation..."
+    mkinitcpio -k "/boot/vmlinuz-${KERNEL_NAME}" -g "/boot/initramfs-${KERNEL_NAME}.img" || true
+fi
 
 flatpak override --filesystem=xdg-config/gtk-4.0:ro
 flatpak override --filesystem=xdg-config/gtk-3.0:ro

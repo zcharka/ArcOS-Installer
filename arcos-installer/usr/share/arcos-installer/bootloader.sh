@@ -39,7 +39,7 @@ detect_kernel_name() {
     done
     # Fallback: pick the first vmlinuz in /boot
     if [ -z "$kname" ]; then
-        local first_vmlinuz=$(ls /boot/vmlinuz-* 2>/dev/null | head -1)
+        local first_vmlinuz=$(ls /boot/vmlinuz-* 2>/dev/null | grep -v '\.png$' | head -1)
         if [ -n "$first_vmlinuz" ]; then
             kname=$(basename "$first_vmlinuz" | sed 's/^vmlinuz-//')
         fi
@@ -546,6 +546,11 @@ EOF
     fi
 
     if [ ! -f "/boot/$KERNEL_INITRAMFS" ]; then
+        print_warning "Initramfs /boot/$KERNEL_INITRAMFS not found, attempting direct generation..."
+        mkinitcpio -k "/boot/$KERNEL_VMLINUZ" -g "/boot/$KERNEL_INITRAMFS" 2>&1 || true
+    fi
+
+    if [ ! -f "/boot/$KERNEL_INITRAMFS" ]; then
         print_error "Initramfs file /boot/$KERNEL_INITRAMFS not found!"
         return 1
     fi
@@ -783,7 +788,27 @@ main() {
 
     if [ ! -f "/boot/$KERNEL_INITRAMFS" ]; then
         print_warning "initramfs not found, generating..."
-        mkinitcpio -P
+        if [ ! -f "/etc/mkinitcpio.d/${KERNEL_NAME}.preset" ]; then
+            print_msg "Creating /etc/mkinitcpio.d/${KERNEL_NAME}.preset..."
+            mkdir -p /etc/mkinitcpio.d
+            cat << EOF > "/etc/mkinitcpio.d/${KERNEL_NAME}.preset"
+# mkinitcpio preset file for the '${KERNEL_NAME}' package
+
+ALL_config="/etc/mkinitcpio.conf"
+ALL_kver="/boot/vmlinuz-${KERNEL_NAME}"
+
+PRESETS=('default' 'fallback')
+
+default_image="/boot/initramfs-${KERNEL_NAME}.img"
+fallback_image="/boot/initramfs-${KERNEL_NAME}-fallback.img"
+fallback_options="-S autodetect"
+EOF
+        fi
+        mkinitcpio -p "$KERNEL_NAME" 2>&1 || mkinitcpio -P 2>&1 || true
+        if [ ! -f "/boot/$KERNEL_INITRAMFS" ]; then
+            print_warning "Preset generation failed, attempting direct mkinitcpio generation..."
+            mkinitcpio -k "/boot/$KERNEL_VMLINUZ" -g "/boot/$KERNEL_INITRAMFS" 2>&1 || true
+        fi
     fi
 
     BOOT_MODE=$(detect_boot_mode)
